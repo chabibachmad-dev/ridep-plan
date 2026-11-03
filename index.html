@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rideplan ROJ '26</title>
+<meta name="theme-color" content="#0d6b5f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --fg:#17201e; --muted:#5b6b67; --line:#d6dedb;
+  --accent:#0d6b5f; --climb:#c26a12; --night:#3b4a8a; --warn:#b3261e; --ok:#1d7a3a;
+  --display:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#101615; --surface:#18201f; --fg:#e6ecea; --muted:#94a5a0; --line:#2b3634;
+  --accent:#4fc1ae; --climb:#e8a050; --night:#8e9be0; --warn:#f2867c; --ok:#6fd08c; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:720px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:20px}
+h1,h2{font-family:var(--display);font-weight:700;margin:0;line-height:1.05}
+h1{font-size:30px} h2{font-size:22px}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.live{display:flex;flex-direction:column;gap:12px}
+.clock{font-family:var(--mono);font-size:40px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label{font-size:13px;color:var(--muted)}
+input[type=number]{font:600 22px var(--mono);width:110px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+button{font:600 14px var(--body);padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+button.pri{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.status{font-family:var(--display);font-size:26px;font-weight:700}
+.status.ok{color:var(--ok)} .status.late{color:var(--climb)} .status.bad{color:var(--warn)}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.kv div{background:var(--surface);padding:10px}
+.kv b{display:block;font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums}
+.kv span{font-size:11px;color:var(--muted)}
+.chart{overflow-x:auto}
+svg text{font-family:var(--body);font-size:11px;fill:var(--muted)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:520px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+tr.next td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+tr.done td{opacity:.5}
+td.t{font-family:var(--mono);white-space:nowrap}
+td.w{font-family:var(--mono);white-space:nowrap;color:var(--warn)}
+.note{font-size:13px;color:var(--muted)}
+details{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+summary{font-weight:600;cursor:pointer}
+details p,details ul{margin:8px 0 0}
+ul{padding-left:18px} li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">7 Nov 2026 · Start 05.00 WIB · COT 03.00 WIB</div>
+    <h1>Rideplan ROJ '26 Ultra 300 km</h1>
+    <div class="note">Target finish 23.48 · avg 18,6 km/j bergerak · 6 stop ±2,6 jam</div>
+  </header>
+
+  <section class="panel live" aria-live="polite">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="eyebrow">Jam WIB</div><div class="clock" id="clock">--.--</div></div>
+      <button id="wake" type="button">Layar tetap nyala</button>
+    </div>
+    <div class="row">
+      <label for="km">Posisi sekarang (km)</label>
+      <input id="km" type="number" inputmode="decimal" min="0" max="301" step="1" value="0">
+      <button class="pri" id="cek" type="button">Cek</button>
+    </div>
+    <div class="status" id="status">Masukkan km dari GPS</div>
+    <div class="kv">
+      <div><b id="kPlan">—</b><span>jadwal di km ini</span></div>
+      <div><b id="kFin">—</b><span>perkiraan finish</span></div>
+      <div><b id="kDl">—</b><span>paling lambat di km ini</span></div>
+    </div>
+    <div class="note" id="next"></div>
+  </section>
+
+  <section class="panel chart"><svg id="prof" viewBox="0 0 820 230" width="100%" style="min-width:520px" role="img" aria-label="Profil elevasi"></svg></section>
+
+  <section>
+    <h2 style="margin-bottom:8px">Jadwal</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Km</th><th>Titik</th><th>Tiba</th><th>Brkt</th><th>Paling lambat</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+
+  <details open><summary>Strategi per segmen</summary><ul>
+    <li><b>km 0–75 (+770 m):</b> perbukitan timur, puncak ±410 m di km 41. Gigi ringan, duduk, biarkan rombongan cepat lewat. Makan mulai menit ke-30.</li>
+    <li><b>km 75–110:</b> turunan landai, recovery sambil makan-minum.</li>
+    <li><b>km 110–245:</b> datar ±130 km, panas pukul 11–15. Tempel rombongan sepace, minum tiap 15–20 menit. Pasang lampu di Stop 4 (km 175).</li>
+    <li><b>km 253–263 (+350 m):</b> Rembangan malam hari, rata-rata 3,5%, maks ±6%. Makan berat dulu di Stop 6. Naik 9–11 km/j itu normal.</li>
+    <li><b>km 263–301:</b> turunan 4–7% dalam gelap, rem dari awal. Sisa 30 km datar, tetap makan sedikit, lawan kantuk.</li>
+  </ul></details>
+
+  <details><summary>Makan &amp; minum</summary><ul>
+    <li>Karbo 50–70 g/jam, cairan 500–750 ml/jam, elektrolit di setiap botol.</li>
+    <li>Nasi di Stop 3 (km 130) dan Stop 6 (km 248). Kopi sebelum Rembangan.</li>
+    <li>Alarm tiap 20 menit minum, tiap 40 menit makan.</li>
+  </ul></details>
+
+  <details><summary>Perlengkapan</summary><ul>
+    <li>Lampu depan + belakang untuk ±6–7 jam gelap, lampu cadangan/powerbank, rompi reflektif.</li>
+    <li>Tekanan ban 700x45 sekitar 40–50 psi; 2 ban dalam 45 mm, pompa, multitool, rantai link.</li>
+    <li>Cek rem &amp; kampas, jas hujan tipis, sunblock, kacamata bening, uang tunai kecil.</li>
+  </ul></details>
+
+  <p class="note">Waktu dalam WIB (1 jam lebih lambat dari WITA). Lokasi stop adalah usulan, jadi samakan dengan CP resmi panitia. Aplikasi ini bisa dibuka tanpa sinyal setelah dibuka sekali.</p>
+</div>
+
+<script>
+const D={"E":[99,103,109,132,135,158,232,196,151,167,148,130,124,140,148,153,157,161,172,182,201,199,216,242,262,259,270,275,280,255,251,268,292,323,352,364,338,347,370,354,378,409,412,401,383,348,364,362,326,305,289,263,256,248,276,267,282,272,262,255,250,260,273,291,304,289,281,305,316,313,329,289,218,183,163,153,155,148,143,140,133,126,116,112,109,108,103,100,96,90,84,79,72,63,63,64,62,61,49,51,57,66,44,33,32,32,29,26,25,25,23,23,22,25,24,25,23,23,23,24,24,23,22,21,16,17,15,13,12,9,5,7,5,5,20,25,9,17,14,9,9,8,13,15,15,14,8,7,8,11,15,16,17,14,14,14,14,12,11,11,9,7,5,6,7,8,4,4,7,7,8,8,7,6,4,2,6,5,6,6,6,6,6,6,7,7,8,6,7,9,8,7,8,9,15,15,16,17,17,17,19,19,20,20,21,21,22,25,28,28,27,24,22,21,23,22,20,19,20,18,21,20,23,27,29,32,31,32,33,32,33,34,34,34,37,39,40,43,47,51,54,57,61,69,88,102,123,140,141,124,107,83,72,82,113,140,146,178,213,254,291,321,375,421,375,329,291,252,215,192,188,187,148,120,101,112,101,102,112,96,79,78,75,71,61,60,61,65,72,73,76,82,87,91,87,81,84,86,87,82,96,99],"arr":[0,3,6,10,13,17,22,25,27,31,33,36,39,43,46,49,52,55,58,61,65,68,72,77,81,84,88,90,93,96,99,103,107,111,116,120,123,126,130,132,136,141,144,146,149,151,165,168,170,173,175,178,181,184,189,192,195,198,200,203,206,209,213,217,221,223,226,230,234,237,241,243,245,248,250,253,256,259,262,265,268,271,273,276,279,282,285,288,291,294,297,320,323,326,329,332,335,338,340,343,346,349,352,354,357,360,363,366,369,372,375,378,381,384,387,390,393,396,398,401,404,408,411,414,417,420,423,426,430,433,436,484,487,490,494,498,500,503,507,510,513,516,519,522,525,529,532,535,538,541,544,547,551,554,557,560,563,566,570,573,576,579,582,585,588,592,595,598,601,604,607,610,614,617,620,623,646,649,652,656,659,662,665,668,671,674,678,681,684,687,690,693,697,700,703,706,709,712,715,719,722,725,728,731,734,737,741,744,747,750,753,756,759,763,766,769,802,805,808,812,815,818,821,824,827,830,834,837,840,843,846,849,853,856,859,863,866,869,872,876,879,882,886,889,893,897,902,906,909,942,945,948,951,954,959,965,968,973,979,985,991,996,1002,1009,1012,1014,1017,1019,1022,1024,1028,1031,1034,1036,1039,1043,1046,1050,1053,1056,1059,1062,1065,1068,1071,1075,1078,1081,1084,1088,1091,1094,1098,1101,1104,1107,1111,1114,1117,1121,1125,1128],"dep":[0,3,6,10,13,17,22,25,27,31,33,36,39,43,46,49,52,55,58,61,65,68,72,77,81,84,88,90,93,96,99,103,107,111,116,120,123,126,130,132,136,141,144,146,149,161,165,168,170,173,175,178,181,184,189,192,195,198,200,203,206,209,213,217,221,223,226,230,234,237,241,243,245,248,250,253,256,259,262,265,268,271,273,276,279,282,285,288,291,294,317,320,323,326,329,332,335,338,340,343,346,349,352,354,357,360,363,366,369,372,375,378,381,384,387,390,393,396,398,401,404,408,411,414,417,420,423,426,430,433,481,484,487,490,494,498,500,503,507,510,513,516,519,522,525,529,532,535,538,541,544,547,551,554,557,560,563,566,570,573,576,579,582,585,588,592,595,598,601,604,607,610,614,617,620,643,646,649,652,656,659,662,665,668,671,674,678,681,684,687,690,693,697,700,703,706,709,712,715,719,722,725,728,731,734,737,741,744,747,750,753,756,759,763,766,799,802,805,808,812,815,818,821,824,827,830,834,837,840,843,846,849,853,856,859,863,866,869,872,876,879,882,886,889,893,897,902,906,939,942,945,948,951,954,959,965,968,973,979,985,991,996,1002,1009,1012,1014,1017,1019,1022,1024,1028,1031,1034,1036,1039,1043,1046,1050,1053,1056,1059,1062,1065,1068,1071,1075,1078,1081,1084,1088,1091,1094,1098,1101,1104,1107,1111,1114,1117,1121,1125,1128],"dl":[65,68,72,76,79,84,90,93,96,100,103,106,109,113,117,120,123,127,131,134,139,142,146,152,156,160,164,167,171,174,177,181,186,191,196,201,204,207,211,214,219,224,227,230,233,236,250,253,256,259,262,265,268,271,277,280,285,287,290,294,297,300,305,309,313,316,320,324,328,332,336,339,341,344,347,350,353,356,360,363,366,370,372,376,379,383,386,389,393,396,399,423,426,429,433,436,439,443,446,449,452,456,458,461,465,468,471,475,478,481,485,488,491,495,498,502,505,508,512,515,518,522,525,529,532,536,540,543,547,550,554,602,606,609,614,618,621,624,628,631,635,639,642,646,649,653,656,660,663,667,671,674,678,681,685,688,692,695,699,703,706,710,713,717,720,724,727,731,735,738,742,745,749,752,756,760,783,787,790,794,797,801,804,808,812,815,819,822,826,829,833,836,840,844,847,851,854,858,861,865,868,872,876,879,883,886,890,893,897,900,904,908,911,915,918,922,955,959,962,966,970,973,977,980,984,987,991,995,998,1002,1005,1009,1013,1016,1020,1024,1027,1031,1035,1039,1042,1046,1050,1054,1058,1063,1068,1073,1077,1110,1113,1116,1119,1123,1129,1135,1139,1145,1151,1158,1164,1171,1178,1185,1188,1191,1194,1197,1200,1203,1207,1210,1213,1216,1220,1224,1228,1231,1235,1238,1241,1245,1249,1253,1256,1260,1263,1267,1271,1274,1278,1282,1286,1289,1293,1297,1300,1304,1308,1312,1316,1320]};
+const START=5*60, COT=START+1320;
+const ROWS=[
+ [0,"Start, Jember kota"],[41,"Puncak bukit timur (±410 m)"],[45,"Stop 1: isi bidon (10')"],
+ [90,"Stop 2: isi bidon (20')"],[110,"Masuk pantai selatan"],[130,"Stop 3: makan siang (45')"],
+ [175,"Stop 4: bidon + lampu (20')"],[215,"Stop 5: istirahat (30')"],[248,"Stop 6: makan malam + kopi (30')"],
+ [263,"Puncak Rembangan (422 m)"],[301,"Finish"]];
+const STOPKM=[45,90,130,175,215,248];
+const fmt=m=>{m=Math.round(m);m=((m%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+'.'+String(m%60).padStart(2,'0')};
+const dur=m=>{m=Math.round(Math.abs(m));return (m>=60?Math.floor(m/60)+' j ':'')+(m%60)+' m'};
+// menit WIB sekarang (UTC+7) relatif terhadap tengah malam 7 Nov; hari berikutnya +1440
+const EVENT0=Date.UTC(2026,10,6,17,0,0); // 7 Nov 00.00 WIB
+function nowMin(){return (Date.now()-EVENT0)/60000}
+function nowWIB(){const d=new Date(Date.now()+7*3600e3);return d.getUTCHours()*60+d.getUTCMinutes()}
+function lerp(arr,k){const i=Math.max(0,Math.min(300,Math.floor(k)));const f=Math.max(0,Math.min(1,k-i));return arr[i]+(arr[i+1]-arr[i])*f}
+
+function table(curKm){
+  document.getElementById('rows').innerHTML=ROWS.map(([k,n])=>{
+    const isStop=STOPKM.includes(k);
+    const cls=curKm==null?'':(k<curKm?'done':'');
+    return `<tr data-km="${k}" class="${cls}"><td class="t">${k}</td><td>${n}</td><td class="t">${k===0?'—':fmt(START+D.arr[k])}</td><td class="t">${k===0?'05.00':isStop?fmt(START+D.dep[k]):'—'}</td><td class="w">${k===0||k===41||k===110?'—':fmt(START+D.dl[k])}</td></tr>`}).join('');
+  if(curKm!=null){const nx=ROWS.find(r=>r[0]>curKm);if(nx){const tr=document.querySelector(`tr[data-km="${nx[0]}"]`);tr&&tr.classList.add('next')}}
+}
+
+function check(){
+  const km=parseFloat(document.getElementById('km').value);
+  if(isNaN(km)||km<0||km>301){document.getElementById('status').textContent='Isi km antara 0 dan 301';return}
+  try{localStorage.setItem('roj_km',String(km))}catch(e){}
+  const now=nowMin();
+  const plan=START+lerp(D.arr,km);
+  const dl=START+lerp(D.dl,km);
+  const delta=now<START-60?0:now-plan; // + = terlambat; sebelum event dianggap sesuai jadwal
+  const st=document.getElementById('status');
+  if(now<START-60){st.className='status';st.textContent='Event belum mulai';}
+  else if(now>dl){st.className='status bad';st.textContent=`Lewat batas aman ${dur(now-dl)}. Singkatkan stop!`;}
+  else if(delta>10){st.className='status late';st.textContent=`Terlambat ${dur(delta)} dari jadwal`;}
+  else if(delta<-10){st.className='status ok';st.textContent=`Lebih cepat ${dur(delta)} dari jadwal`;}
+  else{st.className='status ok';st.textContent='Sesuai jadwal';}
+  document.getElementById('kPlan').textContent=fmt(plan);
+  document.getElementById('kFin').textContent=fmt(START+D.dep[301]+Math.max(-120,delta));
+  document.getElementById('kDl').textContent=fmt(dl);
+  const nx=ROWS.find(r=>r[0]>km);
+  document.getElementById('next').textContent=nx?`Berikutnya: ${nx[1]} di km ${nx[0]} (${(nx[0]-km).toFixed(0)} km lagi), jadwal tiba ${fmt(START+D.arr[nx[0]])}.`:'Sudah finish. Selamat!';
+  table(km);draw(km);
+}
+
+const W=820,H=230,L=40,R=10,T=14,B=30,maxE=450;
+const x=k=>L+(W-L-R)*k/301,y=e=>T+(H-T-B)*(1-e/maxE);
+const ns="http://www.w3.org/2000/svg";
+function el(n,a,t){const e=document.createElementNS(ns,n);for(const k in a)e.setAttribute(k,a[k]);if(t!=null)e.textContent=t;return e}
+function draw(curKm){
+  const svg=document.getElementById('prof');svg.innerHTML='';
+  const cs=getComputedStyle(document.documentElement),c=v=>cs.getPropertyValue(v).trim();
+  const dusk=D.arr.findIndex(a=>START+a>=17*60+25);
+  svg.appendChild(el('rect',{x:x(dusk),y:T,width:x(301)-x(dusk),height:H-T-B,fill:c('--night'),'fill-opacity':.12}));
+  for(const e of [0,100,200,300,400]){svg.appendChild(el('line',{x1:L,x2:W-R,y1:y(e),y2:y(e),stroke:c('--line')}));svg.appendChild(el('text',{x:L-6,y:y(e)+4,'text-anchor':'end'},e))}
+  for(let k=0;k<=300;k+=50)svg.appendChild(el('text',{x:x(k),y:H-10,'text-anchor':'middle'},k+' km'));
+  let a=`M${x(0)},${y(0)}`;D.E.forEach((e,i)=>a+=` L${x(i).toFixed(1)},${y(e).toFixed(1)}`);a+=` L${x(301)},${y(0)}Z`;
+  svg.appendChild(el('path',{d:a,fill:c('--accent'),'fill-opacity':.18}));
+  let l='';D.E.forEach((e,i)=>l+=(i?' L':'M')+x(i).toFixed(1)+','+y(e).toFixed(1));
+  svg.appendChild(el('path',{d:l,fill:'none',stroke:c('--accent'),'stroke-width':1.6}));
+  [[29,41],[253,263]].forEach(([p,q])=>{let s='';for(let i=p;i<=q;i++)s+=(i>p?' L':'M')+x(i).toFixed(1)+','+y(D.E[i]).toFixed(1);svg.appendChild(el('path',{d:s,fill:'none',stroke:c('--climb'),'stroke-width':3}))});
+  STOPKM.forEach((k,i)=>{svg.appendChild(el('line',{x1:x(k),x2:x(k),y1:T,y2:H-B,stroke:c('--accent'),'stroke-dasharray':'3 3'}));svg.appendChild(el('text',{x:x(k)+3,y:T+10+(i%2)*13,fill:c('--fg')},'S'+(i+1)))});
+  svg.appendChild(el('text',{x:x(263),y:y(D.E[263])-6,'text-anchor':'middle',fill:c('--fg')},'Rembangan'));
+  if(curKm!=null){const e=D.E[Math.min(301,Math.round(curKm))];svg.appendChild(el('circle',{cx:x(curKm),cy:y(e),r:6,fill:c('--warn'),stroke:c('--surface'),'stroke-width':2}))}
+}
+
+function tick(){document.getElementById('clock').textContent=fmt(nowWIB())}
+setInterval(tick,15000);tick();
+
+let lock=null;
+document.getElementById('wake').onclick=async()=>{
+  const b=document.getElementById('wake');
+  try{if(lock){await lock.release();lock=null;b.textContent='Layar tetap nyala';return}
+    lock=await navigator.wakeLock.request('screen');b.textContent='Layar nyala: ON';
+    lock.addEventListener('release',()=>{lock=null;b.textContent='Layar tetap nyala'});
+  }catch(e){b.textContent='Tidak didukung'}
+};
+document.addEventListener('visibilitychange',async()=>{if(lock===null&&document.getElementById('wake').textContent==='Layar nyala: ON'){try{lock=await navigator.wakeLock.request('screen')}catch(e){}}});
+
+document.getElementById('cek').onclick=check;
+document.getElementById('km').addEventListener('keydown',e=>{if(e.key==='Enter')check()});
+let saved=null;try{saved=localStorage.getItem('roj_km')}catch(e){}
+if(saved!==null){document.getElementById('km').value=saved;check()}else{table(null);draw(null)}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{const k=parseFloat(document.getElementById('km').value);draw(isNaN(k)?null:k)});
+
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
+</script>
+</body>
+</html>
