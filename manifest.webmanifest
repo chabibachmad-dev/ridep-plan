@@ -1,6 +1,6 @@
 {
-  "name": "Rideplan ROJ '26 Ultra 300 km",
-  "short_name": "ROJ 300",
+  "name": "Rideplan",
+  "short_name": "Rideplan",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
