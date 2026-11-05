@@ -86,6 +86,17 @@ ul{padding-left:18px} li{margin:3px 0}
 .places .r{font-family:var(--mono);font-size:12px;text-align:right;white-space:nowrap}
 .open{color:var(--ok)} .closed{color:var(--warn)}
 .attr{font-size:11px;color:var(--muted)}
+.editor{background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.erow{display:grid;grid-template-columns:90px 80px 1fr auto;gap:8px;align-items:end;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.erow div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.erow input,.erow select{width:100%}
+.erow .hint{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.hint button{font-size:12px;padding:4px 9px;border-radius:999px;font-weight:500}
+.hint .none{font-size:12px;color:var(--warn)}
+@media (max-width:460px){.erow{grid-template-columns:1fr 1fr}.erow select{grid-column:1/-1}}
+.tag{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.h24{border-color:var(--ok);color:var(--ok)}
+.empty{color:var(--warn);font-size:13px}
 </style>
 </head>
 <body>
@@ -155,11 +166,15 @@ ul{padding-left:18px} li{margin:3px 0}
   </section>
 
   <section class="stops">
-    <div class="row" style="justify-content:space-between">
-      <h2>Titik stop &amp; tempat makan</h2>
+    <h2>Titik stop &amp; tempat makan</h2>
+    <div class="row">
+      <button class="pri" id="osmBtn" type="button">Ambil tempat sepanjang rute (OSM, gratis)</button>
+      <button id="editBtn" type="button">Atur titik stop</button>
       <button id="fetchAll" type="button">Ambil data Google Maps</button>
     </div>
-    <p class="note" id="placesMsg">Tekan tombol di atas saat masih ada sinyal. Hasilnya disimpan di HP supaya tetap bisa dilihat tanpa sinyal.</p>
+    <p class="note" id="osmMsg"></p>
+    <p class="note" id="placesMsg">Ambil data saat masih ada sinyal. Hasilnya disimpan di HP supaya tetap bisa dilihat tanpa sinyal.</p>
+    <div id="editor" class="editor" hidden></div>
     <div id="stopList" class="stops"></div>
   </section>
 
@@ -245,16 +260,33 @@ function sunMin(lat,lon,dateStr,tz,rising){
 
 /* ---------- rencana ---------- */
 function speed(g){return g>4?13:g>2.5?16:g>1?20:g>-1?26:g>-3?30:34}
+const POIW={fuel:3,mini:3,resto:2,market:1};
+function poiScoreAt(km){ // skor tempat dalam ±1 km di sepanjang rute
+  if(!POI)return 0;let s=0;for(const p of POI){if(Math.abs(p[5]-km)<=1)s+=POIW[p[2]]||1}return Math.min(s,12);
+}
 function pickStops(an,interval){
   const G=an.grid,E=an.E,last=G.length-1,ks=[];let prev=0;
   for(;;){const target=prev+interval;if(target>an.total-12)break;
     let best=-1,score=-1e9;
-    for(let i=0;i<=last;i++){const k=G[i].km;if(k<Math.max(prev+10,target-6)||k>Math.min(an.total-5,target+4))continue;
-      const ahead=E[Math.min(last,i+10)]-E[i];if(ahead>score){score=ahead;best=i}}
-    let pick=G.findIndex(g=>g.km>=target);if(best>=0&&score>=80)pick=best;if(pick<0)break;
+    // jendela biasa dulu; kalau tidak ada tempat sama sekali, perlebar (mis. ruas hutan/JLS)
+    const wins=POI?[[10,6],[18,10]]:[[6,4]];
+    for(const [back,fwd] of wins){
+      best=-1;score=-1e9;let anyPoi=false;
+      for(let i=0;i<=last;i++){const k=G[i].km;
+        const lo=Math.max(prev+10,target-back),hi=Math.min(an.total-5,target+fwd);
+        if(k<lo||k>hi)continue;
+        const ahead=E[Math.min(last,i+10)]-E[i];
+        let sc;
+        if(POI){const ps=poiScoreAt(k);if(ps>0)anyPoi=true;sc=(ps>0?50+ps*3:0)-Math.abs(k-target)*2+(ahead>=80?12:0)}
+        else sc=ahead>=80?ahead:-Math.abs(k-target);
+        if(sc>score){score=sc;best=i}}
+      if(!POI||anyPoi)break;
+    }
+    let pick=best>=0?best:G.findIndex(g=>g.km>=target);if(pick<0)break;
     ks.push(pick);prev=G[pick].km}
   return ks;
 }
+function idxOfKm(km){const G=AN.grid;let b=0;for(let i=0;i<G.length;i++)if(Math.abs(G[i].km-km)<Math.abs(G[b].km-km))b=i;return b}
 function simulate(an,S,stopIdx,factor,fixed){
   const G=an.grid,E=an.E,base=S.flat/26*factor,st=S.startMin;
   const arr=[0],dep=[0],stops=[];let t=0,lunch=false,dinner=false;
@@ -274,8 +306,11 @@ function simulate(an,S,stopIdx,factor,fixed){
   return {arr,dep,stops,total:t};
 }
 function makePlan(an,S){
-  const idx=pickStops(an,S.interval);
-  const T=simulate(an,S,idx,1);
+  let idx,T;
+  if(MANUAL&&MANUAL.length){
+    const list=[...MANUAL].sort((a,b)=>a.km-b.km).map(m=>({...m,i:idxOfKm(m.km)})).filter((m,n,arr)=>m.i>0&&m.i<an.grid.length-1&&(n===0||m.i!==arr[n-1].i));
+    idx=list.map(m=>m.i);T=simulate(an,S,idx,1,list.map(m=>({dur:m.dur,kind:m.kind})));
+  }else{idx=pickStops(an,S.interval);T=simulate(an,S,idx,1)}
   const slow=simulate(an,S,idx,0.885,T.stops);
   const shift=S.cot*60-slow.total;
   const dl=slow.arr.map(a=>a+shift);
@@ -293,16 +328,22 @@ function makePlan(an,S){
     if(!lampDone&&darkSoon){s.notes.push('Pasang lampu sebelum lanjut');lampDone=true}
     const big=an.climbs.find(cl=>cl.gain>=150&&cl.from>=s.km&&cl.from<=s.km+12);
     if(big)s.notes.push(`Makan dulu, tanjakan ${nf(big.gain)} m mulai km ${nf(big.from)}`);
+    if(POI&&!POI.some(p=>Math.abs(p[5]-s.km)<=2))s.noPoi=true;
   });
   let duskI=T.arr.findIndex(a=>darkAt(a));
   return {...T,dl,sunset,sunrise,duskI,darkAt};
 }
 
 /* ---------- state ---------- */
-let S,route,AN,PL,curKm=null,lastGpsKm=null;
+let S,route,AN,PL,curKm=null,lastGpsKm=null,POI=null,MANUAL=null,EDIT=null;
 function loadState(){
   S={...DEFAULT_SET};try{Object.assign(S,JSON.parse(ls.get('rp_settings')||'{}'))}catch(e){}
   route=DEFAULT_ROUTE;try{const r=ls.get('rp_route');if(r)route=JSON.parse(r)}catch(e){}
+}
+function loadRouteExtras(){
+  POI=null;MANUAL=null;
+  try{const p=JSON.parse(ls.get('rp_poi_'+routeKey())||'null');if(p&&p.items)POI=p.items}catch(e){}
+  try{const m=JSON.parse(ls.get('rp_stops_'+routeKey())||'null');if(Array.isArray(m))MANUAL=m}catch(e){}
 }
 function startMinOf(S){const [h,m]=S.start.split(':').map(Number);return h*60+m}
 function routeKey(){return (route.name+'|'+route.pts.length+'|'+route.pts[0].join(',')).replace(/\s/g,'')}
@@ -314,7 +355,7 @@ function dateAt(t){return new Date(eventStartMs()+t*60e3)}
 
 function rebuild(){
   S.startMin=startMinOf(S);
-  AN=analyze(route);PL=makePlan(AN,S);
+  AN=analyze(route);loadRouteExtras();PL=makePlan(AN,S);
   const tz=TZN[S.tz]||'';
   const [Y,M,D]=S.date.split('-').map(Number);
   const dstr=new Date(Date.UTC(Y,M-1,D)).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
@@ -328,7 +369,9 @@ function rebuild(){
   const buf=S.cot*60-PL.total;$('stBuf').textContent=(buf<0?'−':'')+dur(buf);
   $('warn').innerHTML=buf<60?`<div class="warnbox">Dengan kecepatan datar ${nf(S.flat,1)} km/j, cadangan ke COT ${buf<0?'tidak ada (lewat '+dur(buf)+')':'hanya '+dur(buf)}. Naikkan kecepatan datar, kurangi lama berhenti, atau cek ulang COT.</div>`:'';
   $('clockLbl').textContent='Jam '+tz;$('km').max=Math.ceil(AN.total);
-  renderClimbs();renderStops();
+  $('osmMsg').textContent=POI?`${nf(POI.length)} tempat dari OpenStreetMap tersimpan untuk rute ini.${MANUAL?'':' Stop otomatis sudah digeser ke dekat tempat-tempat ini.'}`:'Belum ada data tempat. Tekan "Ambil tempat sepanjang rute" supaya stop otomatis tidak jatuh di tempat sepi.';
+  $('editBtn').textContent=EDIT?'Tutup editor':'Atur titik stop';
+  renderClimbs();renderStops();renderEditor();
   const saved=ls.get('rp_km_'+routeKey());
   if(saved!==null){$('km').value=saved;check(false)}else{curKm=null;table();draw();$('status').className='status';$('status').textContent='Masukkan km atau pakai GPS';['kPlan','kFin','kDl'].forEach(i=>$(i).textContent='—');$('next').textContent=''}
   tick();
@@ -371,6 +414,8 @@ function draw(){
   let l='';G.forEach((g,i)=>l+=(i?' L':'M')+x(g.km).toFixed(1)+','+y(g.e).toFixed(1));
   svg.appendChild(el('path',{d:l,fill:'none',stroke:c('--accent'),'stroke-width':1.6}));
   AN.climbs.filter(cl=>cl.gain>=150).forEach(cl=>{let s='';for(let i=cl.fromI;i<=cl.toI;i++)s+=(i>cl.fromI?' L':'M')+x(G[i].km).toFixed(1)+','+y(G[i].e).toFixed(1);svg.appendChild(el('path',{d:s,fill:'none',stroke:c('--climb'),'stroke-width':3}))});
+  if(POI){const col={fuel:c('--climb'),mini:c('--ok'),resto:c('--accent'),market:c('--muted')};
+    for(const p of POI)svg.appendChild(el('circle',{cx:x(Math.min(p[5],tot)).toFixed(1),cy:H-Bp+5,r:2,fill:col[p[2]]||c('--muted')}))}
   PL.stops.forEach((s,i)=>{svg.appendChild(el('line',{x1:x(s.km),x2:x(s.km),y1:Tp,y2:H-Bp,stroke:c('--accent'),'stroke-dasharray':'3 3'}));svg.appendChild(el('text',{x:x(s.km)+3,y:Tp+10+(i%2)*13,fill:c('--fg')},'S'+(i+1)))});
   if(curKm!=null){const e=interp(AN.E,curKm);svg.appendChild(el('circle',{cx:x(Math.min(curKm,tot)),cy:y(e),r:6,fill:c('--warn'),stroke:c('--surface'),'stroke-width':2}))}
 }
@@ -435,9 +480,14 @@ function renderStops(){
       list=cached.items.length?`<ul class="places">${cached.items.map(p=>`<li><div><a href="${esc(p.u)}" target="_blank" rel="noopener">${esc(p.n)}</a><div class="sub">${esc(p.t||'')}${p.r?` · ★ ${nf(p.r,1)} (${nf(p.c||0)})`:''}</div></div><div class="r">${nf(p.dist)} m<br>${p.open===true?'<span class="open">buka '+esc(cached.at||arrClock)+'</span>':p.open===false?'<span class="closed">tutup '+esc(cached.at||arrClock)+'</span>':'<span class="sub">jam ?</span>'}</div></li>`).join('')}</ul>`:'<p class="note">Tidak ada tempat ditemukan dalam radius 4 km.</p>';
       list+=`<div class="attr">Data tempat: Google Maps · diambil ${esc(cached.when||'')}${cached.at&&cached.at!==arrClock?` · status buka dicek untuk jam ${esc(cached.at)}, jadwal sekarang ${arrClock}`:''}</div>`;
     }
+    let osm='';
+    if(POI){const near=POI.filter(p=>Math.abs(p[5]-s.km)<=2).sort((a,b)=>Math.abs(a[5]-s.km)-Math.abs(b[5]-s.km)).slice(0,8);
+      osm=near.length?`<ul class="places">${near.map(p=>{const dk=p[5]-s.km;return `<li><div><a href="${gmPoint(p[0],p[1])}" target="_blank" rel="noopener">${esc(p[3]||CATN[p[2]])}</a><div class="sub">${CATN[p[2]]}${p[4]?' · '+esc(p[4]):''}</div></div><div class="r">km ${nf(p[5],1)}<br><span class="sub">${dk>=0?'+':'−'}${nf(Math.abs(dk),1)} km</span>${is24(p[4])?'<br><span class="tag h24">24 jam</span>':''}</div></li>`}).join('')}</ul><div class="attr">Data tempat: © kontributor OpenStreetMap · dalam ±2 km dari stop</div>`
+        :`<p class="empty">Tidak ada tempat tercatat di OpenStreetMap dalam ±2 km. Pertimbangkan memindah stop ini (tombol "Atur titik stop").</p>`}
     return `<article class="stop${s.night?' night':''}"><div class="row" style="justify-content:space-between"><h3>Stop ${s.no} · km ${nf(s.km)}</h3><a class="btn chip" href="${gmPoint(g.lat,g.lon)}" target="_blank" rel="noopener">Lihat titik</a></div>
-      <div class="meta">${s.kind} · tiba ${clockAt(s.arr)} · berangkat ${clockAt(s.arr+s.dur)} · ${s.dur} menit${s.night?' · gelap':''}</div>
+      <div class="meta">${esc(s.kind)} · tiba ${clockAt(s.arr)} · berangkat ${clockAt(s.arr+s.dur)} · ${s.dur} menit${s.night?' · gelap':''}${MANUAL?' · diatur manual':''}</div>
       ${s.notes.length?`<div class="note">${s.notes.map(esc).join(' · ')}</div>`:''}
+      ${osm}
       <div class="row">${links}</div>${list}</article>`;
   }).join('')||'<p class="note">Rute terlalu pendek untuk titik stop.</p>';
 }
@@ -490,6 +540,105 @@ $('fetchAll').onclick=async()=>{
   }catch(e){if(!/Gagal di stop/.test($('placesMsg').textContent))$('placesMsg').textContent=e.message||String(e)}
   finally{b.disabled=false;renderStops()}
 };
+
+/* ---------- OpenStreetMap (gratis) ---------- */
+const CATN={fuel:'SPBU',mini:'Minimarket',resto:'Warung/resto',market:'Pasar'};
+const is24=oh=>!!oh&&/24\/7|00:00-24:00|24 jam/i.test(oh);
+const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+function catOf(t){
+  if(t.amenity==='fuel')return 'fuel';
+  if(['convenience','supermarket'].includes(t.shop))return 'mini';
+  if(['restaurant','fast_food','food_court','cafe'].includes(t.amenity)||t.shop==='bakery')return 'resto';
+  if(t.amenity==='marketplace')return 'market';
+  return null;
+}
+async function overpass(q){
+  let lastErr;
+  for(const url of OVERPASS){
+    try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
+      if(!r.ok)throw new Error('Server OSM sibuk ('+r.status+')');return await r.json()}
+    catch(e){lastErr=e}
+  }
+  throw lastErr||new Error('Gagal menghubungi OpenStreetMap');
+}
+async function fetchOSM(){
+  const P=AN.pts,d=AN.d;
+  // titik rute tiap ±300 m, dipecah per ±120 km
+  const line=[];let lastD=-1e9;for(let i=0;i<P.length;i++){if(d[i]-lastD>=300||i===P.length-1){line.push(i);lastD=d[i]}}
+  const chunks=[];let cur=[];for(const i of line){cur.push(i);if(d[i]-d[cur[0]]>=120000){chunks.push(cur);cur=[i]}}if(cur.length>1)chunks.push(cur);
+  const seen=new Set(),items=[];let n=0;
+  for(const ch of chunks){n++;$('osmMsg').textContent=`Mengambil tempat dari OpenStreetMap… bagian ${n} dari ${chunks.length}`;
+    const poly=ch.map(i=>P[i][0].toFixed(5)+','+P[i][1].toFixed(5)).join(',');
+    const q=`[out:json][timeout:90];nwr(around:400,${poly})[~"^(shop|amenity)$"~"^(convenience|supermarket|bakery|fuel|restaurant|fast_food|food_court|cafe|marketplace)$"];out center tags;`;
+    const js=await overpass(q);
+    for(const e of js.elements||[]){
+      const t=e.tags||{},cat=catOf(t);if(!cat)continue;
+      const lat=e.lat??e.center?.lat,lon=e.lon??e.center?.lon;if(lat==null)continue;
+      // km terdekat di rute (hanya di bagian ini); rute loop bisa melewati tempat yang sama dua kali
+      let b=ch[0],bd=1e18;const cl=Math.cos(lat*Math.PI/180);
+      for(let i=ch[0];i<=ch[ch.length-1];i++){const dy=P[i][0]-lat,dx=(P[i][1]-lon)*cl,dd=dx*dx+dy*dy;if(dd<bd){bd=dd;b=i}}
+      if(hv([lat,lon],P[b])>700)continue;
+      const id=e.type+e.id+'@'+Math.round(d[b]/3000);if(seen.has(id))continue;seen.add(id);
+      items.push([+lat.toFixed(5),+lon.toFixed(5),cat,(t.name||t.brand||'').slice(0,60),(t.opening_hours||'').slice(0,40),+(d[b]/1000).toFixed(2)]);
+    }
+  }
+  items.sort((a,b)=>a[5]-b[5]);
+  return items;
+}
+$('osmBtn').onclick=async()=>{
+  const b=$('osmBtn');b.disabled=true;
+  try{const items=await fetchOSM();
+    ls.set('rp_poi_'+routeKey(),JSON.stringify({items,when:Date.now()}));
+    rebuild();
+    const gaps=PL.stops.filter(s=>s.noPoi).length;
+    $('osmMsg').textContent=`${nf(items.length)} tempat ditemukan di sepanjang rute.`+(MANUAL?' Stop kamu diatur manual, jadi tidak digeser; cek peringatan merah di tiap stop.':' Stop otomatis sudah digeser ke dekat tempat.')+(gaps?` ${gaps} stop masih tanpa tempat tercatat.`:'');
+  }catch(e){$('osmMsg').textContent=(e.message||String(e))+'. Coba lagi beberapa menit lagi.'}
+  finally{b.disabled=false}
+};
+
+/* ---------- editor titik stop ---------- */
+const KINDS=['Isi bidon','Makan siang','Makan malam','Istirahat'];
+$('editBtn').onclick=()=>{
+  if(EDIT){EDIT=null;rebuild();return}
+  EDIT=PL.stops.map(s=>({km:Math.round(s.km),dur:s.dur,kind:KINDS.includes(s.kind)?s.kind:'Isi bidon'}));
+  rebuild();$('editor').scrollIntoView({behavior:'smooth',block:'start'});
+};
+function hintsFor(km){
+  if(!POI)return '<span class="note">Ambil tempat OSM dulu untuk melihat saran lokasi.</span>';
+  const near=POI.filter(p=>Math.abs(p[5]-km)<=10);
+  // kelompokkan per km bulat, pilih yang paling banyak tempatnya
+  const by={};near.forEach(p=>{const k=Math.round(p[5]);(by[k]=by[k]||[]).push(p)});
+  const opts=Object.entries(by).map(([k,ps])=>({k:+k,ps,score:ps.reduce((a,p)=>a+(POIW[p[2]]||1),0)})).sort((a,b)=>Math.abs(a.k-km)-Math.abs(b.k-km)).slice(0,6);
+  if(!opts.length)return '<span class="none">Tidak ada tempat tercatat dalam ±10 km</span>';
+  return opts.map(o=>{const cats=[...new Set(o.ps.map(p=>CATN[p[2]]))].join(', ');const nm=o.ps.find(p=>p[3])?.[3]||'';return `<button type="button" data-setkm="${o.k}">km ${o.k} · ${esc(nm?nm+' · ':'')}${esc(cats)}${o.ps.some(p=>is24(p[4]))?' · 24 jam':''}</button>`}).join('');
+}
+function renderEditor(){
+  const ed=$('editor');
+  if(!EDIT){ed.hidden=true;ed.innerHTML='';return}
+  ed.hidden=false;
+  ed.innerHTML=`<h3>Atur titik stop</h3><p class="note">Ubah km, lama berhenti, dan jenis tiap stop. Tombol kecil di bawah tiap baris adalah lokasi di sekitar km itu yang punya minimarket/SPBU/warung, ketuk untuk memindah stop ke sana.</p>`+
+    EDIT.map((s,n)=>`<div class="erow" data-n="${n}"><b style="grid-column:1/-1">Stop ${n+1}</b>
+      <div><label for="ek${n}">Km</label><input id="ek${n}" type="number" min="1" max="${Math.floor(AN.total)-1}" step="1" inputmode="numeric" value="${s.km}" data-f="km"></div>
+      <div><label for="ed${n}">Menit</label><input id="ed${n}" type="number" min="0" max="600" step="5" inputmode="numeric" value="${s.dur}" data-f="dur"></div>
+      <div><label for="et${n}">Jenis</label><select id="et${n}" data-f="kind">${KINDS.map(k=>`<option${k===s.kind?' selected':''}>${k}</option>`).join('')}</select></div>
+      <button type="button" data-del="${n}" aria-label="Hapus stop ${n+1}">Hapus</button>
+      <div class="hint">${hintsFor(s.km)}</div></div>`).join('')+
+    `<div class="row"><button type="button" id="eAdd">Tambah stop</button><button type="button" class="pri" id="eSave">Simpan &amp; hitung ulang</button><button type="button" id="eAuto">Pakai stop otomatis</button></div>`;
+}
+$('editor').addEventListener('input',e=>{const r=e.target.closest('.erow');if(!r)return;const n=+r.dataset.n,f=e.target.dataset.f;if(!f)return;
+  EDIT[n][f]=f==='kind'?e.target.value:parseFloat(e.target.value);
+  if(f==='km'&&!isNaN(EDIT[n].km))r.querySelector('.hint').innerHTML=hintsFor(EDIT[n].km)});
+$('editor').addEventListener('change',e=>{const r=e.target.closest('.erow');if(r&&e.target.dataset.f==='kind')EDIT[+r.dataset.n].kind=e.target.value});
+$('editor').addEventListener('click',e=>{
+  const t=e.target.closest('button');if(!t)return;
+  if(t.dataset.setkm){const r=t.closest('.erow'),n=+r.dataset.n;EDIT[n].km=+t.dataset.setkm;r.querySelector('[data-f="km"]').value=EDIT[n].km;r.querySelector('.hint').innerHTML=hintsFor(EDIT[n].km);return}
+  if(t.dataset.del!=null){EDIT.splice(+t.dataset.del,1);renderEditor();return}
+  if(t.id==='eAdd'){const lastKm=EDIT.length?Math.max(...EDIT.map(s=>s.km)):0;EDIT.push({km:Math.min(Math.floor(AN.total)-5,lastKm+S.interval),dur:15,kind:'Isi bidon'});renderEditor();return}
+  if(t.id==='eSave'){
+    const clean=EDIT.filter(s=>s.km>0&&s.km<AN.total-1&&s.dur>=0).map(s=>({km:Math.round(s.km),dur:Math.round(s.dur||0),kind:s.kind})).sort((a,b)=>a.km-b.km);
+    ls.set('rp_stops_'+routeKey(),JSON.stringify(clean));EDIT=null;rebuild();$('placesMsg').textContent='Titik stop disimpan. Kalau sudah ambil data Google Maps sebelumnya, ambil ulang untuk stop yang pindah.';return}
+  if(t.id==='eAuto'){ls.del('rp_stops_'+routeKey());EDIT=null;rebuild();$('placesMsg').textContent='Kembali ke titik stop otomatis.';return}
+});
 
 /* ---------- pengaturan ---------- */
 function fillForm(){$('fName').value=S.name;$('fDate').value=S.date;$('fStart').value=S.start;$('fTz').value=String(S.tz);$('fCot').value=S.cot;$('fFlat').value=S.flat;$('fInt').value=S.interval;$('fKey').value=ls.get('rp_key')||''}
